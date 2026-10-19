@@ -1,0 +1,37 @@
+{% extends 'matricula/base.html' %}
+{% block titulo %}Matrícula nacional{% endblock %}
+{% block contenido %}
+  <h1 class="h3 mb-3">Matrícula nacional por año y dependencia</h1>
+  <p>
+    La tabla muestra cuántos alumnos había matriculados cada año en Chile, separados según
+    la dependencia administrativa del establecimiento. La columna <b>Variación</b> compara
+    el total con el año anterior. Se consideran solo establecimientos funcionando y con
+    alumnos, igual que en las cifras oficiales del Mineduc.
+  </p>
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Año</th>
+            {% for dependencia in dependencias %}<th>{{ dependencia }}</th>{% endfor %}
+            <th>Total</th>
+            <th>Variación</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for fila in filas %}
+          <tr>
+            <td><b>{{ fila.anio }}</b></td>
+            {% for valor in fila.valores %}<td>{{ valor }}</td>{% endfor %}
+            <td><b>{{ fila.total }}</b></td>
+            <td>{{ fila.variacion }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="8">No hay datos disponibles.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endblock %}

@@ -1,0 +1,44 @@
+<!-- Menu principal con dos opciones desplegables: Listados de datos y Graficos -->
+<nav class="navbar navbar-expand-lg bg-white border-bottom" aria-label="Navegación principal">
+  <div class="container">
+    <a class="navbar-brand" href="{% url 'index' %}">EduMap</a>
+    <button class="navbar-toggler" type="button"
+      data-bs-toggle="collapse" data-bs-target="#menuPrincipal"
+      aria-controls="menuPrincipal" aria-expanded="false"
+      aria-label="Abrir o cerrar menú">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="menuPrincipal">
+      <ul class="navbar-nav me-auto">
+        <li class="nav-item">
+          <a class="nav-link" href="{% url 'index' %}">Inicio</a>
+        </li>
+        <!-- desplegable 1: listados en tablas -->
+        <li class="nav-item dropdown">
+          <button class="nav-link dropdown-toggle" type="button"
+            data-bs-toggle="dropdown" aria-expanded="false">
+            Listados de datos
+          </button>
+          <ul class="dropdown-menu">
+            <li><a class="dropdown-item" href="{% url 'listado1' %}">Matrícula nacional por año y dependencia</a></li>
+            <li><a class="dropdown-item" href="{% url 'listado2' %}">Comunas con mayor caída de matrícula pública</a></li>
+            <li><a class="dropdown-item" href="{% url 'listado3' %}">Matrícula por región</a></li>
+          </ul>
+        </li>
+        <!-- desplegable 2: graficos -->
+        <li class="nav-item dropdown">
+          <button class="nav-link dropdown-toggle" type="button"
+            data-bs-toggle="dropdown" aria-expanded="false">
+            Gráficos
+          </button>
+          <ul class="dropdown-menu">
+            <li><a class="dropdown-item" href="{% url 'grafico1' %}">Barras: matrícula por región</a></li>
+            <li><a class="dropdown-item" href="{% url 'grafico2' %}">Líneas: evolución por dependencia</a></li>
+            <li><a class="dropdown-item" href="{% url 'grafico3' %}">Dispersión: comunas</a></li>
+            <li><a class="dropdown-item" href="{% url 'grafico4' %}">Circular: distribución por dependencia</a></li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+  </div>
+</nav>

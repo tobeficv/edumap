@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="es-CL">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}EduMap{% endblock %} · EduMap</title>
+  <link rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
+    integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB"
+    crossorigin="anonymous">
+</head>
+<body class="bg-light">
+  <!-- Menu compartido por todas las painas -->
+  {% include 'matricula/menu.html' %}
+  <main class="container py-4">
+    {% block contenido %}{% endblock %}
+  </main>
+  <footer class="container py-4">
+    Fuente: Centro de Estudios Mineduc, Resumen de Matrícula por Establecimiento Educacional 2019–2025.
+  </footer>
+  <script
+    src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
+    integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI"
+    crossorigin="anonymous"></script>
+</body>
+</html>

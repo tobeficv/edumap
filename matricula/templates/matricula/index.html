@@ -1,0 +1,30 @@
+{% extends 'matricula/base.html' %}
+{% block titulo %}Inicio{% endblock %}
+{% block contenido %}
+  <h1 class="h3 mb-3">EduMap: matrícula escolar en Chile</h1>
+  <p>
+    Panel para explorar la evolución y la distribución territorial de la matrícula
+    escolar entre {{ anio_inicial }} y {{ anio_final }}, con foco en la caída de la
+    educación pública (municipal y SLEP).
+  </p>
+  <!-- indicadores calculados en la vista index -->
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <p>Alumnos matriculados {{ anio_final }}</p>
+      <h2 class="h3">{{ total_alumnos }}</h2>
+    </div>
+  </div>
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <p>Establecimientos funcionando {{ anio_final }}</p>
+      <h2 class="h3">{{ total_establecimientos }}</h2>
+    </div>
+  </div>
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <p>Comunas con establecimientos</p>
+      <h2 class="h3">{{ total_comunas }}</h2>
+    </div>
+  </div>
+  <p>Use el menú <b>Listados de datos</b> para ver las tablas y <b>Gráficos</b> para las visualizaciones.</p>
+{% endblock %}
