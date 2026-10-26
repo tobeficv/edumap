@@ -7,28 +7,20 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from django.shortcuts import render
 
-# el csv chico que armamos con datos/preparar_datos.py (sale de los datos del Mineduc)
+# el csv que armamos con datos/preparar_datos.py (sale de los datos del Mineduc)
 RUTA_DATOS = "datos/matricula_comunas.csv"
 
-# un color fijo pa cada dependencia, asi todos los graficos se ven parejos
-COLORES = {
-    "Municipal": "#4C72B0",
-    "SLEP": "#DD8452",
-    "Particular Subvencionado": "#55A868",
-    "Particular Pagado": "#C44E52",
-    "Corp. Administración Delegada": "#8172B2",
-}
-ORDEN_DEPENDENCIAS = list(COLORES.keys())
-
-
-def cargar_datos():
-    # lee el csv y lo devuelve como dataframe
-    return pd.read_csv(RUTA_DATOS, encoding="utf-8")
+# las dependencias en el orden en que las mostramos siempre
+DEPENDENCIAS = ["Municipal", "SLEP", "Particular Subvencionado",
+                "Particular Pagado", "Corp. Administración Delegada"]
+# un color pa cada dependencia (mismo orden de arriba)
+COLORES = ["#4C72B0", "#DD8452", "#55A868", "#C44E52", "#8172B2"]
 
 
 def miles(numero):
     # 3541783 -> "3.541.783" (con punto como se usa en Chile)
-    return f"{numero:,.0f}".replace(",", ".")
+    texto = f"{numero:,.0f}"
+    return texto.replace(",", ".")
 
 
 def porcentaje(numero):
@@ -38,49 +30,62 @@ def porcentaje(numero):
 
 
 def index(request):
-    datos = cargar_datos()
+    datos = pd.read_csv(RUTA_DATOS)
+    anio_inicial = datos["anio"].min()
     anio_final = datos["anio"].max()
+
+    # nos quedamos solo con el ultimo año pa los numeritos de las tarjetas
     ultimo = datos[datos["anio"] == anio_final]
-    # los numeritos de las tarjetas del inicio
+    total_alumnos = ultimo["matricula"].sum()
+    total_establecimientos = ultimo["establecimientos"].sum()
+    total_comunas = len(ultimo["comuna"].unique())
+
     contexto = {
-        "anio_inicial": datos["anio"].min(),
+        "anio_inicial": anio_inicial,
         "anio_final": anio_final,
-        "total_alumnos": miles(ultimo["matricula"].sum()),
-        "total_establecimientos": miles(ultimo["establecimientos"].sum()),
-        "total_comunas": ultimo["comuna"].nunique(),
+        "total_alumnos": miles(total_alumnos),
+        "total_establecimientos": miles(total_establecimientos),
+        "total_comunas": total_comunas,
     }
     return render(request, "matricula/index.html", contexto)
 
 
 def listado1(request):
     # Listado 1: cuantos alumnos hay cada año, separado por dependencia
-    datos = cargar_datos()
-    tabla = datos.pivot_table(index="anio", columns="dependencia",
-                              values="matricula", aggfunc="sum", fill_value=0)
-    tabla = tabla[ORDEN_DEPENDENCIAS]
-    tabla["Total"] = tabla.sum(axis=1)
+    datos = pd.read_csv(RUTA_DATOS)
+    anios = sorted(datos["anio"].unique())
 
     filas = []
-    total_anterior = None
-    for anio, fila in tabla.iterrows():
+    total_anterior = 0
+    for anio in anios:
+        datos_anio = datos[datos["anio"] == anio]
+
+        # sumamos los alumnos de cada dependencia y de paso el total
+        valores = []
+        total = 0
+        for dependencia in DEPENDENCIAS:
+            datos_dependencia = datos_anio[datos_anio["dependencia"] == dependencia]
+            suma = datos_dependencia["matricula"].sum()
+            valores.append(miles(suma))
+            total = total + suma
+
         # el primer año no tiene con quien compararse, por eso va un guion
-        if total_anterior is None:
+        if total_anterior == 0:
             variacion = "—"
         else:
-            cambio = (fila["Total"] - total_anterior) / total_anterior * 100
-            variacion = f"{cambio:+.1f} %".replace(".", ",")
-        total_anterior = fila["Total"]
-        valores = []
-        for dependencia in ORDEN_DEPENDENCIAS:
-            valores.append(miles(fila[dependencia]))
+            cambio = (total - total_anterior) / total_anterior * 100
+            variacion = f"{cambio:+.1f} %"
+            variacion = variacion.replace(".", ",")
+
         filas.append({
             "anio": anio,
             "valores": valores,
-            "total": miles(fila["Total"]),
+            "total": miles(total),
             "variacion": variacion,
         })
+        total_anterior = total
 
-    contexto = {"dependencias": ORDEN_DEPENDENCIAS, "filas": filas}
+    contexto = {"dependencias": DEPENDENCIAS, "filas": filas}
     return render(request, "matricula/listado1.html", contexto)
 
 
@@ -88,34 +93,49 @@ def listado2(request):
     # Listado 2: las comunas donde mas cayo la matricula publica
     # ojo: "publica" = Municipal + SLEP, porque muchos colegios municipales
     # se pasaron a los SLEP y si miramos solo municipal parece que se vaciaron
-    datos = cargar_datos()
+    datos = pd.read_csv(RUTA_DATOS)
     anio_inicial = datos["anio"].min()
     anio_final = datos["anio"].max()
 
     publica = datos[(datos["dependencia"] == "Municipal") | (datos["dependencia"] == "SLEP")]
-    inicio = publica[publica["anio"] == anio_inicial].groupby(["region", "comuna"])["matricula"].sum()
-    fin = publica[publica["anio"] == anio_final].groupby(["region", "comuna"])["matricula"].sum()
+    inicio = publica[publica["anio"] == anio_inicial]
+    fin = publica[publica["anio"] == anio_final]
 
-    # juntamos los dos años en una sola tabla (si una comuna no tiene dato queda en 0)
-    tabla = pd.DataFrame({"inicio": inicio, "fin": fin}).fillna(0)
-    tabla["diferencia"] = tabla["fin"] - tabla["inicio"]
-    tabla["variacion"] = tabla["diferencia"] / tabla["inicio"] * 100
+    # recorremos comuna por comuna y vamos guardando los resultados en una lista
+    lista = []
+    for comuna in inicio["comuna"].unique():
+        datos_comuna = inicio[inicio["comuna"] == comuna]
+        alumnos_inicio = datos_comuna["matricula"].sum()
+        alumnos_fin = fin[fin["comuna"] == comuna]["matricula"].sum()
 
-    # dejamos fuera las comunas muy chicas (menos de 1000 alumnos publicos)
-    # porque ahi cualquier cambio chiquito da un porcentaje gigante
-    tabla = tabla[tabla["inicio"] >= 1000]
+        # dejamos fuera las comunas muy chicas (menos de 1000 alumnos publicos)
+        # porque ahi cualquier cambio chiquito da un porcentaje gigante
+        if alumnos_inicio >= 1000:
+            diferencia = alumnos_fin - alumnos_inicio
+            variacion = diferencia / alumnos_inicio * 100
+            region = datos_comuna["region"].iloc[0]  # la region de la primera fila
+            lista.append({
+                "comuna": comuna,
+                "region": region,
+                "inicio": alumnos_inicio,
+                "fin": alumnos_fin,
+                "diferencia": diferencia,
+                "variacion": variacion,
+            })
 
-    # ordenamos de la que mas alumnos perdio a la que menos y sacamos las 15 primeras
+    # pasamos la lista a dataframe pa poder ordenarla facil
+    # (de la que mas alumnos perdio a la que menos) y sacamos las 15 primeras
+    tabla = pd.DataFrame(lista)
     tabla = tabla.sort_values("diferencia")
     tabla = tabla.head(15)
 
     filas = []
     posicion = 1
-    for (region, comuna), fila in tabla.iterrows():
+    for i, fila in tabla.iterrows():
         filas.append({
             "posicion": posicion,
-            "comuna": comuna,
-            "region": region,
+            "comuna": fila["comuna"],
+            "region": fila["region"],
             "inicio": miles(fila["inicio"]),
             "fin": miles(fila["fin"]),
             "diferencia": miles(fila["diferencia"]),
@@ -134,26 +154,33 @@ def listado2(request):
 
 def listado3(request):
     # Listado 3: foto del ultimo año por region
-    datos = cargar_datos()
+    datos = pd.read_csv(RUTA_DATOS)
     anio_final = datos["anio"].max()
     ultimo = datos[datos["anio"] == anio_final]
+    total_pais = ultimo["matricula"].sum()
 
-    # por cada region sumamos alumnos y colegios
-    por_region = ultimo.groupby("region")[["matricula", "establecimientos", "rurales"]].sum()
-
-    # y aparte cuantos de esos alumnos estan en la publica (Municipal + SLEP)
-    publica = ultimo[(ultimo["dependencia"] == "Municipal") | (ultimo["dependencia"] == "SLEP")]
-    publica_region = publica.groupby("region")["matricula"].sum()
-    por_region["publica"] = publica_region
+    # por cada region sumamos alumnos, colegios y colegios rurales
+    lista = []
+    for region in ultimo["region"].unique():
+        datos_region = ultimo[ultimo["region"] == region]
+        # y aparte cuantos de esos alumnos van a la publica (Municipal + SLEP)
+        publica = datos_region[(datos_region["dependencia"] == "Municipal") | (datos_region["dependencia"] == "SLEP")]
+        lista.append({
+            "region": region,
+            "establecimientos": datos_region["establecimientos"].sum(),
+            "rurales": datos_region["rurales"].sum(),
+            "matricula": datos_region["matricula"].sum(),
+            "publica": publica["matricula"].sum(),
+        })
 
     # de la region con mas alumnos a la con menos
-    por_region = por_region.sort_values("matricula", ascending=False)
-    total_pais = por_region["matricula"].sum()
+    tabla = pd.DataFrame(lista)
+    tabla = tabla.sort_values("matricula", ascending=False)
 
     filas = []
-    for region, fila in por_region.iterrows():
+    for i, fila in tabla.iterrows():
         filas.append({
-            "region": region,
+            "region": fila["region"],
             "establecimientos": miles(fila["establecimientos"]),
             "rurales": miles(fila["rurales"]),
             "matricula": miles(fila["matricula"]),
@@ -172,30 +199,38 @@ def listado3(request):
 
 def grafico1(request):
     # Grafico de barras: alumnos por region en el ultimo año
-    datos = cargar_datos()
+    datos = pd.read_csv(RUTA_DATOS)
     anio_final = datos["anio"].max()
     ultimo = datos[datos["anio"] == anio_final]
-    por_region = ultimo.groupby("region")["matricula"].sum().sort_values()
-    valores = por_region.values / 1000  # en miles pa que los numeros no sean eternos
 
-    figura, eje = plt.subplots(figsize=(9, 6))
-    barras = eje.barh(por_region.index, valores, color="#4C72B0")
-    eje.set_title(f"Matrícula escolar por región, {anio_final}")
-    eje.set_xlabel("Alumnos matriculados (miles)")
-    eje.set_ylabel("Región")
-    eje.set_xlim(0, valores.max() * 1.12)  # un poco de espacio extra pa las etiquetas
-    eje.bar_label(barras, fmt="%.0f", padding=3)
-    eje.grid(axis="x", alpha=0.3)
-    figura.tight_layout()
+    lista = []
+    for region in ultimo["region"].unique():
+        alumnos = ultimo[ultimo["region"] == region]["matricula"].sum()
+        lista.append({"region": region, "alumnos": alumnos})
+
+    # ordenamos de menor a mayor pa que la barra mas larga quede arriba
+    tabla = pd.DataFrame(lista)
+    tabla = tabla.sort_values("alumnos")
+    miles_alumnos = tabla["alumnos"] / 1000  # en miles pa que los numeros no sean eternos
+
+    plt.figure(figsize=(9, 6))
+    barras = plt.barh(tabla["region"], miles_alumnos, color="#4C72B0")
+    plt.bar_label(barras, fmt="%.0f", padding=3)  # el numerito al final de cada barra
+    plt.title(f"Matrícula escolar por región, {anio_final}")
+    plt.xlabel("Alumnos matriculados (miles)")
+    plt.ylabel("Región")
+    plt.xlim(0, miles_alumnos.max() * 1.12)  # un poco de espacio extra pa los numeritos
+    plt.grid(axis="x", alpha=0.3)
+    plt.tight_layout()
+
     # pasamos la imagen a texto (base64) pa poder mandarla al html
     buffer = BytesIO()
-    figura.savefig(buffer, format="png", dpi=120)
-    plt.close(figura)
-    buffer.seek(0)
+    plt.savefig(buffer, format="png", dpi=120)
+    plt.close()
     grafico = base64.b64encode(buffer.getvalue()).decode("utf-8")
-    buffer.close()
 
-    parte_rm = por_region["Metropolitana"] / por_region.sum() * 100
+    alumnos_rm = ultimo[ultimo["region"] == "Metropolitana"]["matricula"].sum()
+    parte_rm = alumnos_rm / ultimo["matricula"].sum() * 100
     contexto = {
         "titulo": "Matrícula por región",
         "explicacion": (
@@ -213,36 +248,47 @@ def grafico1(request):
 
 def grafico2(request):
     # Grafico de lineas: como cambia la matricula de cada dependencia año a año
-    datos = cargar_datos()
-    tabla = datos.pivot_table(index="anio", columns="dependencia",
-                              values="matricula", aggfunc="sum", fill_value=0)
-    publica = (tabla["Municipal"] + tabla["SLEP"]) / 1000
+    datos = pd.read_csv(RUTA_DATOS)
+    anios = sorted(datos["anio"].unique())
 
-    figura, eje = plt.subplots(figsize=(9, 5))
+    plt.figure(figsize=(9, 5))
+
     # una linea por dependencia
-    for dependencia in ORDEN_DEPENDENCIAS:
-        eje.plot(tabla.index, tabla[dependencia] / 1000, marker="o",
-                 linewidth=2, color=COLORES[dependencia], label=dependencia)
-    # y una extra punteada con la publica completa
-    eje.plot(tabla.index, publica, marker="s", linewidth=2, linestyle="--",
+    for i in range(len(DEPENDENCIAS)):
+        dependencia = DEPENDENCIAS[i]
+        valores = []
+        for anio in anios:
+            filtro = datos[(datos["anio"] == anio) & (datos["dependencia"] == dependencia)]
+            valores.append(filtro["matricula"].sum() / 1000)
+        plt.plot(anios, valores, marker="o", linewidth=2, color=COLORES[i], label=dependencia)
+
+    # y una extra punteada con la publica completa (Municipal + SLEP)
+    publica = []
+    for anio in anios:
+        datos_anio = datos[datos["anio"] == anio]
+        filtro = datos_anio[(datos_anio["dependencia"] == "Municipal") | (datos_anio["dependencia"] == "SLEP")]
+        publica.append(filtro["matricula"].sum() / 1000)
+    plt.plot(anios, publica, marker="s", linewidth=2, linestyle="--",
              color="#333333", label="Pública total (Municipal + SLEP)")
-    eje.set_title("Evolución de la matrícula por dependencia, 2019–2025")
-    eje.set_xlabel("Año")
-    eje.set_ylabel("Alumnos matriculados (miles)")
-    eje.set_xticks(tabla.index)
-    eje.grid(True, alpha=0.3)
-    eje.legend(fontsize=8, loc="center left", bbox_to_anchor=(1, 0.5))
-    figura.tight_layout()
+
+    plt.title("Evolución de la matrícula por dependencia, 2019–2025")
+    plt.xlabel("Año")
+    plt.ylabel("Alumnos matriculados (miles)")
+    plt.xticks(anios)
+    plt.grid(True, alpha=0.3)
+    plt.legend(fontsize=8, loc="center left", bbox_to_anchor=(1, 0.5))  # leyenda afuera, a la derecha
+    plt.tight_layout()
+
     # pasamos la imagen a texto (base64) pa poder mandarla al html
     buffer = BytesIO()
-    figura.savefig(buffer, format="png", dpi=120)
-    plt.close(figura)
-    buffer.seek(0)
+    plt.savefig(buffer, format="png", dpi=120)
+    plt.close()
     grafico = base64.b64encode(buffer.getvalue()).decode("utf-8")
-    buffer.close()
 
-    caida_publica = (publica.iloc[-1] - publica.iloc[0]) / publica.iloc[0] * 100
-    texto_caida = f"{caida_publica:+.1f} %".replace(".", ",")
+    # cuanto cambio la publica entre el primer año y el ultimo
+    caida_publica = (publica[-1] - publica[0]) / publica[0] * 100
+    texto_caida = f"{caida_publica:+.1f} %"
+    texto_caida = texto_caida.replace(".", ",")
     contexto = {
         "titulo": "Evolución de la matrícula por dependencia",
         "explicacion": (
@@ -265,50 +311,54 @@ def grafico3(request):
     # eje x = que % de sus alumnos iban a la publica al principio
     # eje y = cuanto cambio su matricula total entre el primer y el ultimo año
     # la idea es ver si las comunas mas "publicas" son las que mas alumnos pierden
-    datos = cargar_datos()
+    datos = pd.read_csv(RUTA_DATOS)
     anio_inicial = datos["anio"].min()
     anio_final = datos["anio"].max()
-
     inicio = datos[datos["anio"] == anio_inicial]
     fin = datos[datos["anio"] == anio_final]
-    publica_inicio = inicio[(inicio["dependencia"] == "Municipal") | (inicio["dependencia"] == "SLEP")]
 
-    tabla = pd.DataFrame({
-        "total_inicio": inicio.groupby("comuna")["matricula"].sum(),
-        "total_fin": fin.groupby("comuna")["matricula"].sum(),
-        "publica_inicio": publica_inicio.groupby("comuna")["matricula"].sum(),
-    }).fillna(0)
+    peso_publica = []   # eje x
+    variaciones = []    # eje y
+    tamanos = []        # tamaño de cada punto
+    for comuna in inicio["comuna"].unique():
+        inicio_comuna = inicio[inicio["comuna"] == comuna]
+        total_inicio = inicio_comuna["matricula"].sum()
 
-    # igual que en el listado 2, sacamos las comunas muy chiquitas
-    tabla = tabla[tabla["total_inicio"] >= 1000]
+        # igual que en el listado 2, sacamos las comunas muy chiquitas
+        if total_inicio >= 1000:
+            total_fin = fin[fin["comuna"] == comuna]["matricula"].sum()
+            publica = inicio_comuna[(inicio_comuna["dependencia"] == "Municipal") | (inicio_comuna["dependencia"] == "SLEP")]
+            publica_inicio = publica["matricula"].sum()
 
-    tabla["peso_publica"] = tabla["publica_inicio"] / tabla["total_inicio"] * 100
-    tabla["variacion"] = (tabla["total_fin"] - tabla["total_inicio"]) / tabla["total_inicio"] * 100
+            peso_publica.append(publica_inicio / total_inicio * 100)
+            variaciones.append((total_fin - total_inicio) / total_inicio * 100)
+            tamanos.append(total_inicio / 400)  # mientras mas alumnos, mas grande el punto
 
-    # el tamaño del punto depende de cuantos alumnos tiene la comuna
-    tamanos = tabla["total_inicio"] / 400
+    plt.figure(figsize=(9, 6))
+    plt.scatter(peso_publica, variaciones, s=tamanos, color="#4C72B0", alpha=0.5, edgecolors="white")
+    plt.axhline(0, color="#333333", linewidth=1)  # linea del 0: arriba crecio, abajo bajo
+    plt.title("Peso de la educación pública vs. variación de la matrícula por comuna")
+    plt.xlabel(f"% de alumnos en educación pública en {anio_inicial}")
+    plt.ylabel(f"Variación de la matrícula total {anio_inicial}–{anio_final} (%)")
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
 
-    figura, eje = plt.subplots(figsize=(9, 6))
-    eje.scatter(tabla["peso_publica"], tabla["variacion"], s=tamanos,
-                color="#4C72B0", alpha=0.5, edgecolors="white")
-    eje.axhline(0, color="#333333", linewidth=1)  # linea del 0: arriba crecio, abajo bajo
-    eje.set_title(f"Peso de la educación pública vs. variación de la matrícula por comuna")
-    eje.set_xlabel(f"% de alumnos en educación pública en {anio_inicial}")
-    eje.set_ylabel(f"Variación de la matrícula total {anio_inicial}–{anio_final} (%)")
-    eje.grid(True, alpha=0.3)
-    figura.tight_layout()
     # pasamos la imagen a texto (base64) pa poder mandarla al html
     buffer = BytesIO()
-    figura.savefig(buffer, format="png", dpi=120)
-    plt.close(figura)
-    buffer.seek(0)
+    plt.savefig(buffer, format="png", dpi=120)
+    plt.close()
     grafico = base64.b64encode(buffer.getvalue()).decode("utf-8")
-    buffer.close()
 
-    # la correlacion nos dice si hay relacion (cerca de 0 = casi nada)
-    correlacion = tabla["peso_publica"].corr(tabla["variacion"])
-    texto_correlacion = f"{correlacion:.2f}".replace(".", ",")
-    comunas_bajan = (tabla["variacion"] < 0).sum()
+    # contamos cuantas comunas quedaron bajo el 0 (perdieron alumnos)
+    comunas_bajan = 0
+    for variacion in variaciones:
+        if variacion < 0:
+            comunas_bajan = comunas_bajan + 1
+
+    # la correlacion nos dice si hay relacion entre x e y (cerca de 0 = casi nada)
+    correlacion = pd.Series(peso_publica).corr(pd.Series(variaciones))
+    texto_correlacion = f"{correlacion:.2f}"
+    texto_correlacion = texto_correlacion.replace(".", ",")
 
     # armamos la frase segun si la correlacion es positiva, negativa o casi nada
     if correlacion > 0.1:
@@ -329,7 +379,7 @@ def grafico3(request):
             f"(el tamaño del punto indica cuántos alumnos tiene). En el eje horizontal "
             f"está el porcentaje de su matrícula que asistía a la educación pública "
             f"(municipal + SLEP) y en el vertical cuánto cambió su matrícula total "
-            f"hasta {anio_final}. {comunas_bajan} de las {len(tabla)} comunas quedan "
+            f"hasta {anio_final}. {comunas_bajan} de las {len(variaciones)} comunas quedan "
             f"bajo la línea del 0, o sea, perdieron alumnos. La correlación entre "
             f"ambas variables ({texto_correlacion}) {lectura}"
         ),
@@ -341,37 +391,34 @@ def grafico3(request):
 
 def grafico4(request):
     # Grafico circular: como se reparte la matricula del ultimo año entre dependencias
-    datos = cargar_datos()
+    datos = pd.read_csv(RUTA_DATOS)
     anio_final = datos["anio"].max()
     ultimo = datos[datos["anio"] == anio_final]
-    por_dependencia = ultimo.groupby("dependencia")["matricula"].sum()
-    por_dependencia = por_dependencia[ORDEN_DEPENDENCIAS]  # mismo orden que siempre
 
-    # armamos la lista de colores en el mismo orden
-    colores = []
-    for dependencia in ORDEN_DEPENDENCIAS:
-        colores.append(COLORES[dependencia])
+    # los alumnos de cada dependencia, en el mismo orden de DEPENDENCIAS
+    valores = []
+    for dependencia in DEPENDENCIAS:
+        suma = ultimo[ultimo["dependencia"] == dependencia]["matricula"].sum()
+        valores.append(suma)
 
-    figura, eje = plt.subplots(figsize=(9, 6))
-    eje.pie(por_dependencia.values, colors=colores,
-            autopct="%1.1f%%", startangle=90, pctdistance=0.8,
-            wedgeprops={"edgecolor": "white"})
+    plt.figure(figsize=(9, 6))
+    plt.pie(valores, colors=COLORES, autopct="%1.1f%%", startangle=90, pctdistance=0.8)
     # los nombres van en la leyenda al lado, porque encima de la torta se pisaban
-    eje.legend(por_dependencia.index, loc="center left", bbox_to_anchor=(1, 0.5), fontsize=9)
-    eje.set_title(f"Distribución de la matrícula por dependencia, {anio_final}")
-    eje.axis("equal")  # pa que quede redondo y no ovalado
-    figura.tight_layout()
+    plt.legend(DEPENDENCIAS, loc="center left", bbox_to_anchor=(1, 0.5), fontsize=9)
+    plt.title(f"Distribución de la matrícula por dependencia, {anio_final}")
+    plt.axis("equal")  # pa que quede redondo y no ovalado
+    plt.tight_layout()
+
     # pasamos la imagen a texto (base64) pa poder mandarla al html
     buffer = BytesIO()
-    figura.savefig(buffer, format="png", dpi=120)
-    plt.close(figura)
-    buffer.seek(0)
+    plt.savefig(buffer, format="png", dpi=120)
+    plt.close()
     grafico = base64.b64encode(buffer.getvalue()).decode("utf-8")
-    buffer.close()
 
-    total = por_dependencia.sum()
-    parte_subvencionado = por_dependencia["Particular Subvencionado"] / total * 100
-    parte_publica = (por_dependencia["Municipal"] + por_dependencia["SLEP"]) / total * 100
+    # valores[0] = Municipal, valores[1] = SLEP, valores[2] = Particular Subvencionado
+    total = sum(valores)
+    parte_subvencionado = valores[2] / total * 100
+    parte_publica = (valores[0] + valores[1]) / total * 100
     contexto = {
         "titulo": "Distribución de la matrícula por dependencia",
         "explicacion": (
