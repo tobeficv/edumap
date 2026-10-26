@@ -1,0 +1,50 @@
+{% extends 'matricula/base.html' %}
+{% block titulo %}{{ titulo }}{% endblock %}
+{% block contenido %}
+  <h1 class="h3 mb-3">{{ titulo }} ({{ anio_final }})</h1>
+  <!-- explicacion de lo que muestra la tabla -->
+  <p>
+    La tabla resume cada región en {{ anio_final }}: cuántos establecimientos funcionando
+    tiene (y cuántos son rurales), cuántos alumnos hay matriculados, qué parte de la
+    matrícula del país representa y qué porcentaje de sus alumnos asiste a la educación
+    pública (municipal + SLEP). Las regiones están ordenadas de mayor a menor matrícula.
+  </p>
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Región</th>
+            <th>Establecimientos</th>
+            <th>Rurales</th>
+            <th>Matrícula</th>
+            <th>% del país</th>
+            <th>% en educación pública</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for fila in filas %}
+          <tr>
+            <td><b>{{ fila.region }}</b></td>
+            <td>{{ fila.establecimientos }}</td>
+            <td>{{ fila.rurales }}</td>
+            <td>{{ fila.matricula }}</td>
+            <td>{{ fila.parte_pais }}</td>
+            <td>{{ fila.parte_publica }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="6">No hay datos disponibles.</td></tr>
+          {% endfor %}
+          <tr>
+            <td><b>Total país</b></td>
+            <td></td>
+            <td></td>
+            <td><b>{{ total_pais }}</b></td>
+            <td>100 %</td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endblock %}

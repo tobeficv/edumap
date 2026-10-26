@@ -1,0 +1,45 @@
+{% extends 'matricula/base.html' %}
+{% block titulo %}{{ titulo }}{% endblock %}
+{% block contenido %}
+  <h1 class="h3 mb-3">{{ titulo }}</h1>
+  <!-- explicacion de lo que muestra la tabla -->
+  <p>
+    La tabla muestra las 15 comunas que más alumnos perdieron en la educación pública
+    entre {{ anio_inicial }} y {{ anio_final }}. Se cuenta como pública la matrícula
+    <b>municipal + SLEP</b>, porque muchos colegios municipales pasaron a los Servicios
+    Locales de Educación Pública y si se mirara solo lo municipal parecería que se vaciaron.
+    Solo se incluyen comunas con al menos 1.000 alumnos en la pública en {{ anio_inicial }}.
+  </p>
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Comuna</th>
+            <th>Región</th>
+            <th>Matrícula {{ anio_inicial }}</th>
+            <th>Matrícula {{ anio_final }}</th>
+            <th>Diferencia</th>
+            <th>Variación</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for fila in filas %}
+          <tr>
+            <td>{{ fila.posicion }}</td>
+            <td><b>{{ fila.comuna }}</b></td>
+            <td>{{ fila.region }}</td>
+            <td>{{ fila.inicio }}</td>
+            <td>{{ fila.fin }}</td>
+            <td>{{ fila.diferencia }}</td>
+            <td>{{ fila.variacion }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="7">No hay datos disponibles.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endblock %}
