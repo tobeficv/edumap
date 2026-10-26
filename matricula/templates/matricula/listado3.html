@@ -23,6 +23,7 @@
           </tr>
         </thead>
         <tbody>
+          <!-- una fila por region -->
           {% for fila in filas %}
           <tr>
             <td><b>{{ fila.region }}</b></td>
@@ -35,6 +36,7 @@
           {% empty %}
           <tr><td colspan="6">No hay datos disponibles.</td></tr>
           {% endfor %}
+          <!-- fila final con el total del pais -->
           <tr>
             <td><b>Total país</b></td>
             <td></td>

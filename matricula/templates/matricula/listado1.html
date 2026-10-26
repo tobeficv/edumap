@@ -2,6 +2,7 @@
 {% block titulo %}Matrícula nacional{% endblock %}
 {% block contenido %}
   <h1 class="h3 mb-3">Matrícula nacional por año y dependencia</h1>
+  <!-- explicacion de lo que muestra la tabla -->
   <p>
     La tabla muestra cuántos alumnos había matriculados cada año en Chile, separados según
     la dependencia administrativa del establecimiento. La columna <b>Variación</b> compara
@@ -20,6 +21,7 @@
           </tr>
         </thead>
         <tbody>
+          <!-- una fila por año, las manda la vista en la lista filas -->
           {% for fila in filas %}
           <tr>
             <td><b>{{ fila.anio }}</b></td>
@@ -27,6 +29,7 @@
             <td><b>{{ fila.total }}</b></td>
             <td>{{ fila.variacion }}</td>
           </tr>
+          <!-- por si la lista viene vacia -->
           {% empty %}
           <tr><td colspan="8">No hay datos disponibles.</td></tr>
           {% endfor %}

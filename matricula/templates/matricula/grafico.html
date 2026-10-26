@@ -1,11 +1,13 @@
 {% extends 'matricula/base.html' %}
 {% block titulo %}{{ titulo }}{% endblock %}
 {% block contenido %}
+  <!-- esta misma plantilla sirve pa los 4 graficos, solo cambia lo que manda la vista -->
   <h1 class="h3 mb-3">{{ titulo }}</h1>
-  <!-- explicacion de la informacion -->
+  <!-- la explicacion del grafico (viene armada desde la vista) -->
   <p>{{ explicacion }}</p>
   <div class="card shadow-sm">
     <div class="card-body text-center">
+      <!-- la imagen viene como texto base64, por eso el data:image/png -->
       <img src="data:image/png;base64,{{ grafico }}" class="img-fluid rounded" alt="{{ alt }}">
     </div>
   </div>

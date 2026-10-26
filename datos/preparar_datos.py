@@ -1,53 +1,62 @@
-
-import sys
-from pathlib import Path
-
 import pandas as pd
 
-CARPETA = Path(sys.argv[1])
-SALIDA = Path(__file__).parent / "matricula_comunas.csv"
+# Este script se corre UNA sola vez pa armar el csv chico que usa la pagina.
+# Los csv originales del Mineduc pesan mucho, asi que no van en github:
+# hay que bajarlos de datosabiertos.mineduc.cl y dejarlos en la carpeta de abajo.
+# Se corre desde la carpeta del proyecto con: python datos/preparar_datos.py
+CARPETA = "datos/originales/"
+SALIDA = "datos/matricula_comunas.csv"
 
-ARCHIVOS = {
-    2019: ("matricula_2019.csv", ";"),
-    2020: ("matricula_2020.csv", ";"),
-    2021: ("matricula_2021.csv", ";"),
-    2022: ("matricula_2022.csv", ";"),
-    2023: ("matricula_2023.csv", ";"),
-    2024: ("matricula_2024.csv", ";"),
-    2025: ("matricula_2025.csv", ","),
-}
+# de las ~70 columnas que trae cada archivo solo usamos estas
 COLUMNAS = ["AGNO", "RBD", "COD_DEPE2", "RURAL_RBD", "COD_REG_RBD",
             "NOM_COM_RBD", "ESTADO_ESTAB", "MAT_TOTAL"]
 
-MAPA_REGION = {
+# los archivos traen codigos, aca los pasamos a nombres que se entiendan
+REGIONES = {
     1: "Tarapacá", 2: "Antofagasta", 3: "Atacama", 4: "Coquimbo",
     5: "Valparaíso", 6: "O'Higgins", 7: "Maule", 8: "Biobío",
     9: "Araucanía", 10: "Los Lagos", 11: "Aysén", 12: "Magallanes",
     13: "Metropolitana", 14: "Los Ríos", 15: "Arica y Parinacota", 16: "Ñuble",
 }
-MAPA_DEPENDENCIA = {
+DEPENDENCIAS = {
     1: "Municipal", 2: "Particular Subvencionado", 3: "Particular Pagado",
     4: "Corp. Administración Delegada", 5: "SLEP",
 }
 
+# leemos un archivo por año, del 2019 al 2025
 tablas = []
-for anio, (nombre, sep) in ARCHIVOS.items():
-    tabla = pd.read_csv(CARPETA / nombre, sep=sep, encoding="utf-8",
-                        usecols=COLUMNAS, low_memory=False)
+for anio in range(2019, 2026):
+    archivo = CARPETA + "matricula_" + str(anio) + ".csv"
+    # ojo: el de 2025 viene separado con coma y los demas con punto y coma
+    if anio == 2025:
+        separador = ","
+    else:
+        separador = ";"
+    tabla = pd.read_csv(archivo, sep=separador, usecols=COLUMNAS, low_memory=False)
     tablas.append(tabla)
-df = pd.concat(tablas, ignore_index=True)
+    print("leido", archivo)
 
-df = df[(df["ESTADO_ESTAB"] == 1) & (df["MAT_TOTAL"] > 0)].copy()
-df["comuna"] = df["NOM_COM_RBD"].str.strip().str.title()
-df["region"] = df["COD_REG_RBD"].map(MAPA_REGION)
-df["dependencia"] = df["COD_DEPE2"].map(MAPA_DEPENDENCIA)
+# pegamos todos los años en una sola tabla
+df = pd.concat(tablas)
 
-resumen = (df.groupby(["AGNO", "region", "comuna", "dependencia"])
-             .agg(matricula=("MAT_TOTAL", "sum"),
-                  establecimientos=("RBD", "nunique"),
-                  rurales=("RURAL_RBD", "sum"))
-             .reset_index()
-             .rename(columns={"AGNO": "anio"}))
-resumen.to_csv(SALIDA, index=False, encoding="utf-8")
-print(f"Guardado {SALIDA} con {len(resumen)} filas")
-print(resumen.groupby("anio")[["matricula", "establecimientos"]].sum())
+# nos quedamos con los colegios funcionando (estado 1) y que tengan alumnos
+df = df[df["ESTADO_ESTAB"] == 1]
+df = df[df["MAT_TOTAL"] > 0]
+
+# columnas nuevas con nombres mas amigables
+df["anio"] = df["AGNO"]
+df["region"] = df["COD_REG_RBD"].map(REGIONES)
+df["comuna"] = df["NOM_COM_RBD"].str.strip().str.title()  # "PUENTE ALTO " -> "Puente Alto"
+df["dependencia"] = df["COD_DEPE2"].map(DEPENDENCIAS)
+df["matricula"] = df["MAT_TOTAL"]
+df["establecimientos"] = 1  # cada fila es un colegio, asi que al sumar da cuantos colegios hay
+df["rurales"] = df["RURAL_RBD"]  # 1 si el colegio es rural, 0 si no
+
+# sumamos todo por año, region, comuna y dependencia
+columnas_grupo = ["anio", "region", "comuna", "dependencia"]
+columnas_suma = ["matricula", "establecimientos", "rurales"]
+resumen = df.groupby(columnas_grupo)[columnas_suma].sum()
+resumen = resumen.reset_index()  # pa que anio, region, etc. vuelvan a ser columnas normales
+
+resumen.to_csv(SALIDA, index=False)
+print("listo! se guardo", SALIDA, "con", len(resumen), "filas")

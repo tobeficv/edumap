@@ -1,7 +1,8 @@
-<!-- Menu principal con dos opciones desplegables: Listados de datos y Graficos -->
+<!-- menu de arriba con los dos desplegables: Listados de datos y Graficos (navbar de bootstrap) -->
 <nav class="navbar navbar-expand-lg bg-white border-bottom" aria-label="Navegación principal">
   <div class="container">
     <a class="navbar-brand" href="{% url 'index' %}">EduMap</a>
+    <!-- boton que aparece en pantallas chicas pa abrir el menu -->
     <button class="navbar-toggler" type="button"
       data-bs-toggle="collapse" data-bs-target="#menuPrincipal"
       aria-controls="menuPrincipal" aria-expanded="false"
@@ -13,7 +14,7 @@
         <li class="nav-item">
           <a class="nav-link" href="{% url 'index' %}">Inicio</a>
         </li>
-        <!-- desplegable 1: listados en tablas -->
+        <!-- desplegable 1: las tablas -->
         <li class="nav-item dropdown">
           <button class="nav-link dropdown-toggle" type="button"
             data-bs-toggle="dropdown" aria-expanded="false">
@@ -25,7 +26,7 @@
             <li><a class="dropdown-item" href="{% url 'listado3' %}">Matrícula por región</a></li>
           </ul>
         </li>
-        <!-- desplegable 2: graficos -->
+        <!-- desplegable 2: los graficos -->
         <li class="nav-item dropdown">
           <button class="nav-link dropdown-toggle" type="button"
             data-bs-toggle="dropdown" aria-expanded="false">

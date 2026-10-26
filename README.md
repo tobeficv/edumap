@@ -1,11 +1,11 @@
 # EduMap — Matrícula escolar en Chile (Django)
 
-Proyecto semestral de Taller Visualización de Datos, Certamen 2.
+Proyecto semestral de Taller de Visualización de Datos, Certamen 2.
 Datos: Centro de Estudios Mineduc, *Resumen de Matrícula por Establecimiento Educacional* 2019–2025.
 
-## Ejecutar
+## Cómo correrlo
 
-Si el entorno ya existe:
+Si ya tienes el entorno creado:
 
 ```
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
@@ -24,12 +24,12 @@ py manage.py migrate
 py manage.py runserver
 ```
 
-Abrir http://127.0.0.1:8000/matricula/
+Después abre http://127.0.0.1:8000/matricula/
 
-## Estructura
+## Qué hay en cada parte
 
-- `datos/preparar_datos.py`: lee los 7 CSV oficiales, aplica la limpieza del EDA y genera `datos/matricula_comunas.csv` (ya incluido).
-- `matricula/views.py`: cada vista lee el resumen, prepara la tabla o dibuja el gráfico con Matplotlib y lo envía a la plantilla.
-- `matricula/templates/matricula/`: `base.html` (Bootstrap), `menu.html` (menú con los desplegables *Listados de datos* y *Gráficos*) y las páginas.
-
-
+- `datos/matricula_comunas.csv`: el resumen que usa la página (ya viene incluido).
+- `datos/preparar_datos.py`: el script con el que armamos ese resumen. Lee los 7 CSV originales del Mineduc (van en `datos/originales/` y no se suben porque pesan mucho), deja solo los colegios funcionando y con alumnos, y suma todo por año, región, comuna y dependencia.
+- `matricula/urls.py`: las rutas de las páginas (inicio, 3 listados y 4 gráficos).
+- `matricula/views.py`: una vista por página. Cada una lee el CSV con pandas, arma la tabla o dibuja el gráfico con Matplotlib y se lo manda a la plantilla.
+- `matricula/templates/matricula/`: `base.html` (Bootstrap), `menu.html` (el menú con los desplegables *Listados de datos* y *Gráficos*), `index.html`, `listado1-3.html` y `grafico.html` (la misma plantilla sirve para los 4 gráficos).

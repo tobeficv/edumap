@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="es-CL">
 <head>
+  <!-- plantilla base: todas las paginas heredan de aca, asi no repetimos el menu ni el bootstrap -->
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block titulo %}EduMap{% endblock %} · EduMap</title>
@@ -10,14 +11,16 @@
     crossorigin="anonymous">
 </head>
 <body class="bg-light">
-  <!-- Menu compartido por todas las paginas -->
+  <!-- el menu va en otro archivo y lo metemos con include -->
   {% include 'matricula/menu.html' %}
   <main class="container py-4">
+    <!-- aca va lo propio de cada pagina -->
     {% block contenido %}{% endblock %}
   </main>
   <footer class="container py-4">
     Fuente: Centro de Estudios Mineduc, Resumen de Matrícula por Establecimiento Educacional 2019–2025.
   </footer>
+  <!-- el js de bootstrap es el que hace que los desplegables se abran -->
   <script
     src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
     integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI"
