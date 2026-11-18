@@ -1,20 +1,35 @@
 import base64
 from io import BytesIO
+from xml.sax.saxutils import escape
 
 import matplotlib
 matplotlib.use("Agg")  # esto es pa que matplotlib no intente abrir una ventana
 import matplotlib.pyplot as plt
 import pandas as pd
+from django.http import FileResponse, Http404
 from django.shortcuts import render
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.platypus import LongTable, Paragraph, SimpleDocTemplate, Spacer, TableStyle
 
-# el csv que armamos con datos/preparar_datos.py (sale de los datos del Mineduc)
-RUTA_DATOS = "datos/matricula_comunas.csv"
+from .models import Matricula
 
 # las dependencias en el orden en que las mostramos siempre
 DEPENDENCIAS = ["Municipal", "SLEP", "Particular Subvencionado",
                 "Particular Pagado", "Corp. Administración Delegada"]
 # un color pa cada dependencia (mismo orden de arriba)
 COLORES = ["#4C72B0", "#DD8452", "#55A868", "#C44E52", "#8172B2"]
+
+
+def leer_datos():
+    # antes leiamos el csv, ahora los datos salen de la base sqlite (modelo Matricula)
+    # lo pasamos a dataframe pa que el resto del codigo siga igual
+    filas = Matricula.objects.all().values()
+    return pd.DataFrame(list(filas))
 
 
 def miles(numero):
@@ -29,8 +44,271 @@ def porcentaje(numero):
     return texto.replace(".", ",")
 
 
+def formato(valor):
+    # como se ve cada valor en la pagina y en el pdf
+    # (en el excel van sin formato pa que sigan siendo numeros)
+    if valor is None:
+        return "—"
+    if isinstance(valor, float):
+        return f"{valor:.1f}".replace(".", ",")
+    if isinstance(valor, int):
+        return miles(valor)
+    return str(valor)
+
+
+def es_publica(datos):
+    # publica = Municipal + SLEP
+    return datos[(datos["dependencia"] == "Municipal") | (datos["dependencia"] == "SLEP")]
+
+
+# ---------------- REPORTES ----------------
+# cada reporte arma un diccionario con titulo, explicacion, encabezados y filas
+# asi la pagina, el pdf y el excel usan los mismos datos
+
+def reporte1(request):
+    # Reporte 1: cuantos alumnos hay cada año, separado por dependencia
+    datos = leer_datos()
+    anios = sorted(datos["anio"].unique())
+
+    filas = []
+    total_anterior = 0
+    for anio in anios:
+        datos_anio = datos[datos["anio"] == anio]
+        fila = [str(anio)]
+        total = 0
+        for dependencia in DEPENDENCIAS:
+            suma = int(datos_anio[datos_anio["dependencia"] == dependencia]["matricula"].sum())
+            fila.append(suma)
+            total = total + suma
+        fila.append(total)
+
+        # el primer año no tiene con quien compararse
+        if total_anterior == 0:
+            fila.append(None)
+        else:
+            fila.append(round((total - total_anterior) / total_anterior * 100, 1))
+        filas.append(fila)
+        total_anterior = total
+
+    return {
+        "titulo": "Matrícula nacional por año y dependencia",
+        "explicacion": (
+            "La tabla muestra cuántos alumnos había matriculados cada año en Chile, "
+            "separados según la dependencia administrativa del establecimiento. La columna "
+            "Variación compara el total con el año anterior. Se consideran solo "
+            "establecimientos funcionando y con alumnos, igual que en las cifras oficiales "
+            "del Mineduc."
+        ),
+        "encabezados": ["Año"] + DEPENDENCIAS + ["Total", "Variación (%)"],
+        "filas": filas,
+        "archivo": "reporte1_matricula_nacional",
+    }
+
+
+def reporte2(request):
+    # Reporte 2: las comunas donde mas cayo la matricula publica
+    datos = leer_datos()
+    anio_inicial = datos["anio"].min()
+    anio_final = datos["anio"].max()
+
+    publica = es_publica(datos)
+    inicio = publica[publica["anio"] == anio_inicial]
+    fin = publica[publica["anio"] == anio_final]
+
+    lista = []
+    for comuna in inicio["comuna"].unique():
+        datos_comuna = inicio[inicio["comuna"] == comuna]
+        alumnos_inicio = int(datos_comuna["matricula"].sum())
+        alumnos_fin = int(fin[fin["comuna"] == comuna]["matricula"].sum())
+
+        # sacamos las comunas muy chicas porque cualquier cambio da un % gigante
+        if alumnos_inicio >= 1000:
+            lista.append({
+                "comuna": comuna,
+                "region": datos_comuna["region"].iloc[0],
+                "inicio": alumnos_inicio,
+                "fin": alumnos_fin,
+                "diferencia": alumnos_fin - alumnos_inicio,
+            })
+
+    # ordenamos de la que mas perdio a la que menos y dejamos las 15 primeras
+    tabla = pd.DataFrame(lista)
+    tabla = tabla.sort_values("diferencia")
+    tabla = tabla.head(15)
+
+    filas = []
+    posicion = 1
+    for i, fila in tabla.iterrows():
+        variacion = round(fila["diferencia"] / fila["inicio"] * 100, 1)
+        filas.append([posicion, fila["comuna"], fila["region"], int(fila["inicio"]),
+                      int(fila["fin"]), int(fila["diferencia"]), variacion])
+        posicion = posicion + 1
+
+    return {
+        "titulo": "Comunas con mayor caída de la matrícula pública",
+        "explicacion": (
+            f"La tabla muestra las 15 comunas que más alumnos perdieron en la educación "
+            f"pública entre {anio_inicial} y {anio_final}. Se cuenta como pública la "
+            f"matrícula municipal + SLEP, porque muchos colegios municipales pasaron a los "
+            f"Servicios Locales de Educación Pública y si se mirara solo lo municipal "
+            f"parecería que se vaciaron. Solo se incluyen comunas con al menos 1.000 "
+            f"alumnos en la pública en {anio_inicial}."
+        ),
+        "encabezados": ["#", "Comuna", "Región", f"Matrícula {anio_inicial}",
+                        f"Matrícula {anio_final}", "Diferencia", "Variación (%)"],
+        "filas": filas,
+        "archivo": "reporte2_caida_publica",
+    }
+
+
+def reporte3(request):
+    # Reporte 3: foto del ultimo año por region
+    datos = leer_datos()
+    anio_final = datos["anio"].max()
+    ultimo = datos[datos["anio"] == anio_final]
+    total_pais = int(ultimo["matricula"].sum())
+
+    lista = []
+    for region in ultimo["region"].unique():
+        datos_region = ultimo[ultimo["region"] == region]
+        lista.append({
+            "region": region,
+            "establecimientos": int(datos_region["establecimientos"].sum()),
+            "rurales": int(datos_region["rurales"].sum()),
+            "matricula": int(datos_region["matricula"].sum()),
+            "publica": int(es_publica(datos_region)["matricula"].sum()),
+        })
+
+    # de la region con mas alumnos a la con menos
+    tabla = pd.DataFrame(lista)
+    tabla = tabla.sort_values("matricula", ascending=False)
+
+    filas = []
+    for i, fila in tabla.iterrows():
+        filas.append([
+            fila["region"],
+            int(fila["establecimientos"]),
+            int(fila["rurales"]),
+            int(fila["matricula"]),
+            round(fila["matricula"] / total_pais * 100, 1),
+            round(fila["publica"] / fila["matricula"] * 100, 1),
+        ])
+    # fila final con el total
+    filas.append(["Total país", None, None, total_pais, 100.0, None])
+
+    return {
+        "titulo": f"Matrícula por región ({anio_final})",
+        "explicacion": (
+            f"La tabla resume cada región en {anio_final}: cuántos establecimientos "
+            f"funcionando tiene (y cuántos son rurales), cuántos alumnos hay matriculados, "
+            f"qué parte de la matrícula del país representa y qué porcentaje de sus alumnos "
+            f"asiste a la educación pública (municipal + SLEP). Las regiones están ordenadas "
+            f"de mayor a menor matrícula."
+        ),
+        "encabezados": ["Región", "Establecimientos", "Rurales", "Matrícula",
+                        "% del país", "% en educación pública"],
+        "filas": filas,
+        "archivo": "reporte3_matricula_region",
+    }
+
+
+def reporte4(request):
+    # Reporte 4: los datos del grafico dinamico (region y año que elige el usuario)
+    datos = leer_datos()
+    # vienen por GET en la url, si no eligio nada: todo el pais y el ultimo año
+    region = request.GET.get("region", "Todas")
+    anio = request.GET.get("anio", str(datos["anio"].max()))
+
+    filtrado = datos
+    if region != "Todas":
+        filtrado = filtrado[filtrado["region"] == region]
+    # ojo: si el año no es un numero la seleccion queda vacia
+    if anio.isdigit():
+        filtrado = filtrado[filtrado["anio"] == int(anio)]
+    else:
+        filtrado = filtrado[filtrado["anio"] == -1]
+
+    total = int(filtrado["matricula"].sum())
+    filas = []
+    for dependencia in DEPENDENCIAS:
+        datos_dep = filtrado[filtrado["dependencia"] == dependencia]
+        alumnos = int(datos_dep["matricula"].sum())
+        # solo las dependencias que tienen alumnos en esa seleccion
+        if alumnos > 0:
+            filas.append([
+                dependencia,
+                alumnos,
+                round(alumnos / total * 100, 1),
+                int(datos_dep["establecimientos"].sum()),
+                int(datos_dep["rurales"].sum()),
+            ])
+
+    if region == "Todas":
+        lugar = "todo Chile"
+    else:
+        lugar = f"la región {region}"
+
+    # la interpretacion cambia segun lo que salga
+    if len(filas) > 0:
+        mayor = filas[0]
+        publica = 0
+        for fila in filas:
+            if fila[1] > mayor[1]:
+                mayor = fila
+            if fila[0] == "Municipal" or fila[0] == "SLEP":
+                publica = publica + fila[1]
+        interpretacion = (
+            f"En {lugar} durante {anio} hay {miles(total)} alumnos. La dependencia con más "
+            f"alumnos es {mayor[0]} con el {formato(mayor[2])} %, y la educación pública "
+            f"(municipal + SLEP) reúne el {formato(round(publica / total * 100, 1))} %."
+        )
+    else:
+        interpretacion = "No hay datos para la selección elegida, pruebe con otra región o año."
+
+    return {
+        "titulo": f"Matrícula por dependencia en {lugar}, {anio}",
+        "explicacion": (
+            "Datos del Mineduc (Resumen de Matrícula por Establecimiento) guardados en la "
+            "base de datos SQLite del proyecto. Se filtran por la región y el año elegidos "
+            "y se suman la matrícula, los establecimientos y los establecimientos rurales "
+            "de cada dependencia. El % es la parte de la matrícula de la selección que "
+            "corresponde a cada dependencia. Son los mismos datos del gráfico dinámico. "
+        ),
+        "interpretacion": interpretacion,
+        "encabezados": ["Dependencia", "Matrícula", "% de la matrícula",
+                        "Establecimientos", "Rurales"],
+        "filas": filas,
+        "archivo": f"reporte4_{region}_{anio}".replace(" ", "_"),
+        "region": region,
+        "anio": anio,
+        "lugar": lugar,
+        "total": total,
+    }
+
+
+def armar_reporte(request, numero):
+    # elige el reporte segun el numero de la url
+    if numero == 1:
+        return reporte1(request)
+    elif numero == 2:
+        return reporte2(request)
+    elif numero == 3:
+        return reporte3(request)
+    elif numero == 4:
+        return reporte4(request)
+    raise Http404("Ese reporte no existe")
+
+
+def opciones_filtro():
+    # las regiones y años pa los select del formulario
+    datos = leer_datos()
+    regiones = sorted(datos["region"].unique())
+    anios = sorted(datos["anio"].unique(), reverse=True)
+    return regiones, anios
+
+
 def index(request):
-    datos = pd.read_csv(RUTA_DATOS)
+    datos = leer_datos()
     anio_inicial = datos["anio"].min()
     anio_final = datos["anio"].max()
 
@@ -50,156 +328,134 @@ def index(request):
     return render(request, "matricula/index.html", contexto)
 
 
-def listado1(request):
-    # Listado 1: cuantos alumnos hay cada año, separado por dependencia
-    datos = pd.read_csv(RUTA_DATOS)
-    anios = sorted(datos["anio"].unique())
+def listado(request, numero):
+    # una sola vista pa los 4 reportes, lo que cambia es el numero de la url
+    reporte = armar_reporte(request, numero)
 
+    # pasamos los valores a texto con puntos y comas pa mostrarlos
     filas = []
-    total_anterior = 0
-    for anio in anios:
-        datos_anio = datos[datos["anio"] == anio]
-
-        # sumamos los alumnos de cada dependencia y de paso el total
-        valores = []
-        total = 0
-        for dependencia in DEPENDENCIAS:
-            datos_dependencia = datos_anio[datos_anio["dependencia"] == dependencia]
-            suma = datos_dependencia["matricula"].sum()
-            valores.append(miles(suma))
-            total = total + suma
-
-        # el primer año no tiene con quien compararse, por eso va un guion
-        if total_anterior == 0:
-            variacion = "—"
-        else:
-            cambio = (total - total_anterior) / total_anterior * 100
-            variacion = f"{cambio:+.1f} %"
-            variacion = variacion.replace(".", ",")
-
-        filas.append({
-            "anio": anio,
-            "valores": valores,
-            "total": miles(total),
-            "variacion": variacion,
-        })
-        total_anterior = total
-
-    contexto = {"dependencias": DEPENDENCIAS, "filas": filas}
-    return render(request, "matricula/listado1.html", contexto)
-
-
-def listado2(request):
-    # Listado 2: las comunas donde mas cayo la matricula publica
-    # ojo: "publica" = Municipal + SLEP, porque muchos colegios municipales
-    # se pasaron a los SLEP y si miramos solo municipal parece que se vaciaron
-    datos = pd.read_csv(RUTA_DATOS)
-    anio_inicial = datos["anio"].min()
-    anio_final = datos["anio"].max()
-
-    publica = datos[(datos["dependencia"] == "Municipal") | (datos["dependencia"] == "SLEP")]
-    inicio = publica[publica["anio"] == anio_inicial]
-    fin = publica[publica["anio"] == anio_final]
-
-    # recorremos comuna por comuna y vamos guardando los resultados en una lista
-    lista = []
-    for comuna in inicio["comuna"].unique():
-        datos_comuna = inicio[inicio["comuna"] == comuna]
-        alumnos_inicio = datos_comuna["matricula"].sum()
-        alumnos_fin = fin[fin["comuna"] == comuna]["matricula"].sum()
-
-        # dejamos fuera las comunas muy chicas (menos de 1000 alumnos publicos)
-        # porque ahi cualquier cambio chiquito da un porcentaje gigante
-        if alumnos_inicio >= 1000:
-            diferencia = alumnos_fin - alumnos_inicio
-            variacion = diferencia / alumnos_inicio * 100
-            region = datos_comuna["region"].iloc[0]  # la region de la primera fila
-            lista.append({
-                "comuna": comuna,
-                "region": region,
-                "inicio": alumnos_inicio,
-                "fin": alumnos_fin,
-                "diferencia": diferencia,
-                "variacion": variacion,
-            })
-
-    # pasamos la lista a dataframe pa poder ordenarla facil
-    # (de la que mas alumnos perdio a la que menos) y sacamos las 15 primeras
-    tabla = pd.DataFrame(lista)
-    tabla = tabla.sort_values("diferencia")
-    tabla = tabla.head(15)
-
-    filas = []
-    posicion = 1
-    for i, fila in tabla.iterrows():
-        filas.append({
-            "posicion": posicion,
-            "comuna": fila["comuna"],
-            "region": fila["region"],
-            "inicio": miles(fila["inicio"]),
-            "fin": miles(fila["fin"]),
-            "diferencia": miles(fila["diferencia"]),
-            "variacion": porcentaje(fila["variacion"]),
-        })
-        posicion = posicion + 1
+    for fila in reporte["filas"]:
+        nueva = []
+        for valor in fila:
+            nueva.append(formato(valor))
+        filas.append(nueva)
 
     contexto = {
-        "titulo": "Comunas con mayor caída de la matrícula pública",
-        "anio_inicial": anio_inicial,
-        "anio_final": anio_final,
+        "numero": numero,
+        "titulo": reporte["titulo"],
+        "explicacion": reporte["explicacion"],
+        "interpretacion": reporte.get("interpretacion", ""),
+        "encabezados": reporte["encabezados"],
         "filas": filas,
     }
-    return render(request, "matricula/listado2.html", contexto)
+    # el 4 lleva el formulario con los filtros
+    if numero == 4:
+        regiones, anios = opciones_filtro()
+        contexto["regiones"] = regiones
+        contexto["anios"] = anios
+        contexto["region"] = reporte["region"]
+        contexto["anio"] = reporte["anio"]
+    return render(request, "matricula/reporte.html", contexto)
 
 
-def listado3(request):
-    # Listado 3: foto del ultimo año por region
-    datos = pd.read_csv(RUTA_DATOS)
-    anio_final = datos["anio"].max()
-    ultimo = datos[datos["anio"] == anio_final]
-    total_pais = ultimo["matricula"].sum()
+def descargar_pdf(request, numero):
+    # pdf con reportlab, como en la guia 8
+    reporte = armar_reporte(request, numero)
 
-    # por cada region sumamos alumnos, colegios y colegios rurales
-    lista = []
-    for region in ultimo["region"].unique():
-        datos_region = ultimo[ultimo["region"] == region]
-        # y aparte cuantos de esos alumnos van a la publica (Municipal + SLEP)
-        publica = datos_region[(datos_region["dependencia"] == "Municipal") | (datos_region["dependencia"] == "SLEP")]
-        lista.append({
-            "region": region,
-            "establecimientos": datos_region["establecimientos"].sum(),
-            "rurales": datos_region["rurales"].sum(),
-            "matricula": datos_region["matricula"].sum(),
-            "publica": publica["matricula"].sum(),
-        })
+    buffer = BytesIO()
+    documento = SimpleDocTemplate(
+        buffer, pagesize=landscape(A4), rightMargin=30, leftMargin=30,
+        topMargin=30, bottomMargin=30, title=reporte["titulo"],
+    )
+    estilos = getSampleStyleSheet()
+    celda = ParagraphStyle("Celda", fontName="Helvetica", fontSize=9, leading=11)
+    negrita = ParagraphStyle("Negrita", fontName="Helvetica-Bold", fontSize=9, leading=11)
 
-    # de la region con mas alumnos a la con menos
-    tabla = pd.DataFrame(lista)
-    tabla = tabla.sort_values("matricula", ascending=False)
+    filas = [[Paragraph(escape(texto), negrita) for texto in reporte["encabezados"]]]
+    for fila in reporte["filas"]:
+        filas.append([Paragraph(escape(formato(valor)), celda) for valor in fila])
+    if len(reporte["filas"]) == 0:
+        filas.append([Paragraph("No hay datos para esta selección.", celda)]
+                     + [""] * (len(reporte["encabezados"]) - 1))
 
-    filas = []
-    for i, fila in tabla.iterrows():
-        filas.append({
-            "region": fila["region"],
-            "establecimientos": miles(fila["establecimientos"]),
-            "rurales": miles(fila["rurales"]),
-            "matricula": miles(fila["matricula"]),
-            "parte_pais": porcentaje(fila["matricula"] / total_pais * 100),
-            "parte_publica": porcentaje(fila["publica"] / fila["matricula"] * 100),
-        })
+    # repartimos el ancho de la hoja entre las columnas
+    ancho_columna = (landscape(A4)[0] - 60) / len(reporte["encabezados"])
+    tabla = LongTable(filas, colWidths=ancho_columna, repeatRows=1, hAlign="LEFT")
+    formato_tabla = [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#DCE6F1")),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#BBBBBB")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]
+    if len(reporte["filas"]) == 0:
+        formato_tabla.append(("SPAN", (0, 1), (-1, 1)))
+    tabla.setStyle(TableStyle(formato_tabla))
 
-    contexto = {
-        "titulo": "Matrícula por región",
-        "anio_final": anio_final,
-        "filas": filas,
-        "total_pais": miles(total_pais),
-    }
-    return render(request, "matricula/listado3.html", contexto)
+    elementos = [
+        Paragraph(escape(reporte["titulo"]), estilos["Title"]),
+        Paragraph(escape(reporte["explicacion"]), estilos["Normal"]),
+    ]
+    if reporte.get("interpretacion"):
+        elementos.append(Spacer(1, 6))
+        elementos.append(Paragraph("Interpretación: " + escape(reporte["interpretacion"]), estilos["Normal"]))
+    elementos.append(Spacer(1, 12))
+    elementos.append(tabla)
+    elementos.append(Spacer(1, 12))
+    elementos.append(Paragraph("Fuente: Centro de Estudios Mineduc, Resumen de Matrícula por "
+                               "Establecimiento Educacional 2019–2025.", estilos["Italic"]))
+    documento.build(elementos)
+    buffer.seek(0)
+    return FileResponse(buffer, as_attachment=True, filename=reporte["archivo"] + ".pdf")
 
+
+def descargar_excel(request, numero):
+    # excel con openpyxl, como en la guia 9
+    reporte = armar_reporte(request, numero)
+
+    libro = Workbook()
+    hoja = libro.active
+    hoja.title = "Reporte"
+    hoja.append(reporte["encabezados"])
+    # aca van los valores sin formato, asi los numeros quedan como numeros en excel
+    for fila in reporte["filas"]:
+        hoja.append(fila)
+
+    borde = Side(style="thin", color="D9D9D9")
+    for fila in hoja:
+        for celda in fila:
+            celda.border = Border(left=borde, right=borde, top=borde, bottom=borde)
+            # los % con un decimal y la matricula con separador de miles
+            if isinstance(celda.value, float):
+                celda.number_format = "0.0"
+            elif isinstance(celda.value, int):
+                celda.number_format = "#,##0"
+
+    for celda in hoja[1]:
+        celda.font = Font(bold=True, color="FFFFFF")
+        celda.fill = PatternFill("solid", fgColor="1F4E78")
+
+    # ancho de cada columna segun el texto mas largo que tenga
+    for columna in range(1, len(reporte["encabezados"]) + 1):
+        largo = 10
+        for fila in hoja.iter_rows(min_col=columna, max_col=columna):
+            texto = str(fila[0].value or "")
+            if len(texto) + 2 > largo:
+                largo = len(texto) + 2
+        hoja.column_dimensions[get_column_letter(columna)].width = largo
+
+    hoja.freeze_panes = "A2"
+    hoja.auto_filter.ref = hoja.dimensions
+
+    buffer = BytesIO()
+    libro.save(buffer)
+    buffer.seek(0)
+    return FileResponse(buffer, as_attachment=True, filename=reporte["archivo"] + ".xlsx")
+
+
+# ---------------- GRAFICOS ----------------
 
 def grafico1(request):
     # Grafico de barras: alumnos por region en el ultimo año
-    datos = pd.read_csv(RUTA_DATOS)
+    datos = leer_datos()
     anio_final = datos["anio"].max()
     ultimo = datos[datos["anio"] == anio_final]
 
@@ -248,7 +504,7 @@ def grafico1(request):
 
 def grafico2(request):
     # Grafico de lineas: como cambia la matricula de cada dependencia año a año
-    datos = pd.read_csv(RUTA_DATOS)
+    datos = leer_datos()
     anios = sorted(datos["anio"].unique())
 
     plt.figure(figsize=(9, 5))
@@ -311,7 +567,7 @@ def grafico3(request):
     # eje x = que % de sus alumnos iban a la publica al principio
     # eje y = cuanto cambio su matricula total entre el primer y el ultimo año
     # la idea es ver si las comunas mas "publicas" son las que mas alumnos pierden
-    datos = pd.read_csv(RUTA_DATOS)
+    datos = leer_datos()
     anio_inicial = datos["anio"].min()
     anio_final = datos["anio"].max()
     inicio = datos[datos["anio"] == anio_inicial]
@@ -391,7 +647,7 @@ def grafico3(request):
 
 def grafico4(request):
     # Grafico circular: como se reparte la matricula del ultimo año entre dependencias
-    datos = pd.read_csv(RUTA_DATOS)
+    datos = leer_datos()
     anio_final = datos["anio"].max()
     ultimo = datos[datos["anio"] == anio_final]
 
@@ -431,3 +687,53 @@ def grafico4(request):
         "alt": "Gráfico circular con la distribución de la matrícula por dependencia",
     }
     return render(request, "matricula/grafico.html", contexto)
+
+
+def grafico5(request):
+    # Grafico dinamico: el usuario elige region y año y se dibuja la matricula por dependencia
+    # usa los mismos datos del reporte 4, asi el grafico y la tabla siempre coinciden
+    reporte = reporte4(request)
+    regiones, anios = opciones_filtro()
+
+    grafico = ""
+    if len(reporte["filas"]) > 0:
+        nombres = []
+        alumnos = []
+        colores = []
+        for fila in reporte["filas"]:
+            nombres.append(fila[0])
+            alumnos.append(fila[1] / 1000)  # en miles
+            colores.append(COLORES[DEPENDENCIAS.index(fila[0])])  # cada dependencia con su color
+
+        plt.figure(figsize=(9, 5))
+        barras = plt.barh(nombres, alumnos, color=colores)
+        plt.bar_label(barras, fmt="%.1f", padding=3)
+        plt.gca().invert_yaxis()  # pa que quede en el mismo orden que la tabla
+        plt.title(f"Matrícula por dependencia en {reporte['lugar']}, {reporte['anio']}")
+        plt.xlabel("Alumnos matriculados (miles)")
+        plt.ylabel("Dependencia")
+        plt.xlim(0, max(alumnos) * 1.15)
+        plt.grid(axis="x", alpha=0.3)
+        plt.tight_layout()
+
+        buffer = BytesIO()
+        plt.savefig(buffer, format="png", dpi=120)
+        plt.close()
+        grafico = base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+    contexto = {
+        "titulo": "Gráfico dinámico: matrícula por dependencia",
+        "explicacion": (
+            "Elija una región y un año y presione Actualizar. Cada barra es una dependencia "
+            "administrativa (quién administra el colegio) y su largo son los alumnos "
+            "matriculados, en miles, para esa selección. Así se puede comparar cómo cambia "
+            "el peso de la educación pública y la particular entre regiones y años."
+        ),
+        "interpretacion": reporte["interpretacion"],
+        "grafico": grafico,
+        "regiones": regiones,
+        "anios": anios,
+        "region": reporte["region"],
+        "anio": reporte["anio"],
+    }
+    return render(request, "matricula/grafico5.html", contexto)

@@ -1,0 +1,27 @@
+<!-- formulario de filtros del grafico dinamico y del reporte 4 (manda region y anio por GET) -->
+<form method="get" class="card shadow-sm mb-3">
+  <div class="card-body">
+    <div class="row g-3 align-items-end">
+      <div class="col-md-5">
+        <label for="region" class="form-label">Región</label>
+        <select name="region" id="region" class="form-select">
+          <option value="Todas">Todas (Chile)</option>
+          {% for r in regiones %}
+          <option value="{{ r }}" {% if r == region %}selected{% endif %}>{{ r }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label for="anio" class="form-label">Año</label>
+        <select name="anio" id="anio" class="form-select">
+          {% for a in anios %}
+          <option value="{{ a }}" {% if a|stringformat:"s" == anio %}selected{% endif %}>{{ a }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <button type="submit" class="btn btn-primary w-100">Actualizar</button>
+      </div>
+    </div>
+  </div>
+</form>

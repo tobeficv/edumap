@@ -1,0 +1,41 @@
+{% extends 'matricula/base.html' %}
+{% block titulo %}{{ titulo }}{% endblock %}
+{% block contenido %}
+  <!-- misma plantilla pa los 4 reportes, la vista manda los encabezados y las filas -->
+  <h1 class="h3 mb-3">{{ titulo }}</h1>
+  {% if numero == 4 %}
+    {% include 'matricula/filtros.html' %}
+  {% endif %}
+  <p>{{ explicacion }}</p>
+  {% if interpretacion %}
+    <p><b>Interpretación:</b> {{ interpretacion }}</p>
+  {% endif %}
+  <div class="card shadow-sm">
+    <div class="card-body table-responsive">
+      <table class="table table-striped">
+        <thead>
+          <tr>
+            {% for encabezado in encabezados %}<th>{{ encabezado }}</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for fila in filas %}
+          <tr>
+            {% for valor in fila %}<td>{{ valor }}</td>{% endfor %}
+          </tr>
+          {% empty %}
+          <tr><td colspan="{{ encabezados|length }}">No hay datos para esta selección.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <!-- botones de descarga, el ?{{ request.GET.urlencode }} es pa que el pdf y el excel salgan con los mismos filtros -->
+  <div class="mt-3">
+    <a class="btn btn-primary" href="{% url 'reporte_pdf' numero %}?{{ request.GET.urlencode }}">Descarga en PDF</a>
+    <a class="btn btn-success" href="{% url 'reporte_excel' numero %}?{{ request.GET.urlencode }}">Descarga en Excel</a>
+  </div>
+  {% if numero == 4 %}
+    <a class="btn btn-outline-primary mt-3" href="{% url 'grafico5' %}?{{ request.GET.urlencode }}">Ver el gráfico de esta selección</a>
+  {% endif %}
+{% endblock %}

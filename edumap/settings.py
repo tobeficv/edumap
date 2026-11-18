@@ -25,7 +25,8 @@ SECRET_KEY = 'django-insecure-ow-+9^214r+pywol0az5knmrrfnu^0tbc55^64&3rl$2$!2-@7
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+# el * es pa que se pueda entrar desde la ip publica de la instancia de AWS
+ALLOWED_HOSTS = ["*"]
 
 
 # Application definition

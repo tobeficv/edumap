@@ -1,0 +1,19 @@
+{% extends 'matricula/base.html' %}
+{% block titulo %}{{ titulo }}{% endblock %}
+{% block contenido %}
+  <h1 class="h3 mb-3">{{ titulo }}</h1>
+  {% include 'matricula/filtros.html' %}
+  <p>{{ explicacion }}</p>
+  <div class="card shadow-sm">
+    <div class="card-body text-center">
+      {% if grafico %}
+        <img src="data:image/png;base64,{{ grafico }}" class="img-fluid rounded" alt="Barras con la matrícula por dependencia de la selección">
+      {% else %}
+        <!-- si no hay datos no se dibuja nada y sale el aviso -->
+        <div class="alert alert-warning mb-0">No hay datos para la selección elegida. Pruebe con otra región o año.</div>
+      {% endif %}
+    </div>
+  </div>
+  <p class="mt-3"><b>Interpretación:</b> {{ interpretacion }}</p>
+  <a class="btn btn-outline-primary" href="{% url 'reporte' 4 %}?{{ request.GET.urlencode }}">Ver los datos en el reporte</a>
+{% endblock %}

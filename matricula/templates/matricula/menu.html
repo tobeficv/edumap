@@ -1,4 +1,4 @@
-<!-- menu de arriba con los dos desplegables: Listados de datos y Graficos (navbar de bootstrap) -->
+<!-- menu de arriba con los dos desplegables: Reportes y Graficos (navbar de bootstrap) -->
 <nav class="navbar navbar-expand-lg bg-white border-bottom" aria-label="Navegación principal">
   <div class="container">
     <a class="navbar-brand" href="{% url 'index' %}">EduMap</a>
@@ -14,16 +14,17 @@
         <li class="nav-item">
           <a class="nav-link" href="{% url 'index' %}">Inicio</a>
         </li>
-        <!-- desplegable 1: las tablas -->
+        <!-- desplegable 1: los reportes (antes eran los listados) -->
         <li class="nav-item dropdown">
           <button class="nav-link dropdown-toggle" type="button"
             data-bs-toggle="dropdown" aria-expanded="false">
-            Listados de datos
+            Reportes
           </button>
           <ul class="dropdown-menu">
-            <li><a class="dropdown-item" href="{% url 'listado1' %}">Matrícula nacional por año y dependencia</a></li>
-            <li><a class="dropdown-item" href="{% url 'listado2' %}">Comunas con mayor caída de matrícula pública</a></li>
-            <li><a class="dropdown-item" href="{% url 'listado3' %}">Matrícula por región</a></li>
+            <li><a class="dropdown-item" href="{% url 'reporte' 1 %}">Matrícula nacional por año y dependencia</a></li>
+            <li><a class="dropdown-item" href="{% url 'reporte' 2 %}">Comunas con mayor caída de matrícula pública</a></li>
+            <li><a class="dropdown-item" href="{% url 'reporte' 3 %}">Matrícula por región</a></li>
+            <li><a class="dropdown-item" href="{% url 'reporte' 4 %}">Matrícula por dependencia (con filtros)</a></li>
           </ul>
         </li>
         <!-- desplegable 2: los graficos -->
@@ -37,6 +38,7 @@
             <li><a class="dropdown-item" href="{% url 'grafico2' %}">Líneas: evolución por dependencia</a></li>
             <li><a class="dropdown-item" href="{% url 'grafico3' %}">Dispersión: comunas</a></li>
             <li><a class="dropdown-item" href="{% url 'grafico4' %}">Circular: distribución por dependencia</a></li>
+            <li><a class="dropdown-item" href="{% url 'grafico5' %}">Dinámico: matrícula por región y año</a></li>
           </ul>
         </li>
       </ul>
