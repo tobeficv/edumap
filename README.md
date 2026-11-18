@@ -9,7 +9,7 @@ Datos: Centro de Estudios Mineduc, *Resumen de Matrícula por Establecimiento Ed
 
 ## Links
 
-- Sitio en AWS: http://IP_PUBLICA:8000/matricula/
+- Sitio en AWS: http://18.116.201.69:8000/matricula/
 - Video 1 (despliegue en AWS): (link)
 - Video 2 (presentación del software y el código): (link)
 
@@ -75,7 +75,7 @@ Conectarse (botón **Conectar** → EC2 Instance Connect) y correr:
 ```
 sudo apt update
 sudo apt install -y python3-venv python3-pip git
-git clone https://github.com/USUARIO/edumap.git
+git clone https://github.com/tobeficv/edumap.git
 cd edumap
 python3 -m venv .venv
 source .venv/bin/activate
