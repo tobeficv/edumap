@@ -10,7 +10,7 @@ Datos: Centro de Estudios Mineduc, *Resumen de Matrícula por Establecimiento Ed
 ## Links
 
 - Sitio en AWS: http://18.116.201.69:8000/matricula/
-- Video 1 (despliegue en AWS): https://youtu.be/43QYqAjOeI8
+- Video 1 (despliegue en AWS): https://youtu.be/d9L7Nrk9d3I
 - Video 2 (presentación del software y el código): https://youtu.be/fGtahSoFaP4
 
 ## Qué tiene
