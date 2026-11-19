@@ -10,8 +10,8 @@ Datos: Centro de Estudios Mineduc, *Resumen de Matrícula por Establecimiento Ed
 ## Links
 
 - Sitio en AWS: http://18.116.201.69:8000/matricula/
-- Video 1 (despliegue en AWS): (link)
-- Video 2 (presentación del software y el código): (link)
+- Video 1 (despliegue en AWS): https://youtu.be/43QYqAjOeI8
+- Video 2 (presentación del software y el código): https://youtu.be/fGtahSoFaP4
 
 ## Qué tiene
 
@@ -56,7 +56,7 @@ py cargar_datos.py
 
 ## Despliegue en AWS (EC2)
 
-Usamos una instancia EC2 con Ubuntu. Como la base es SQLite, la base de datos es el archivo `db.sqlite3` que queda dentro de la instancia junto con el proyecto, así que Django la lee directo desde el servidor.
+Usé una instancia EC2 con Ubuntu. Como la base es SQLite, la base de datos es el archivo `db.sqlite3` que queda dentro de la instancia junto con el proyecto, así que Django la lee directo desde el servidor.
 
 ### 1. Crear la instancia
 
@@ -111,7 +111,7 @@ nohup python manage.py runserver 0.0.0.0:8000 > servidor.log 2>&1 &
 
 Abrir `http://IP_PUBLICA:8000/matricula/` desde otro computador o el celular, y probar el gráfico dinámico, el reporte 4 y las descargas en PDF y Excel.
 
-Notas: la IP pública cambia si se detiene y se vuelve a iniciar la instancia. Usamos `runserver` porque es lo que vimos en el curso; para un sitio real habría que usar gunicorn + nginx y `DEBUG = False`.
+Notas: la IP pública cambia si se detiene y se vuelve a iniciar la instancia. Usé `runserver` porque es lo que vimos en el curso; para un sitio real habría que usar gunicorn + nginx y `DEBUG = False`.
 
 ## Archivos importantes
 
@@ -120,4 +120,4 @@ Notas: la IP pública cambia si se detiene y se vuelve a iniciar la instancia. U
 - `matricula/views.py`: las vistas. `reporte1` a `reporte4` arman los datos de cada reporte; `listado`, `descargar_pdf` y `descargar_excel` usan esos mismos datos para la página, el PDF y el Excel. `grafico1` a `grafico5` dibujan los gráficos con matplotlib.
 - `matricula/urls.py`: las rutas (`reporte/<numero>`, `reporte/<numero>/pdf`, `reporte/<numero>/excel`, `grafico1`…`grafico5`).
 - `matricula/templates/matricula/`: `base.html`, `menu.html`, `index.html`, `reporte.html` (sirve para los 4 reportes), `grafico.html`, `grafico5.html` y `filtros.html` (formulario de región y año).
-- `datos/preparar_datos.py`: script con el que armamos el CSV a partir de los archivos originales del Mineduc.
+- `datos/preparar_datos.py`: script con el que armé el CSV a partir de los archivos originales del Mineduc.
